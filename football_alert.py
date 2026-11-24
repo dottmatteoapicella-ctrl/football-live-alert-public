@@ -273,10 +273,18 @@ def main():
                 rejected += 1
                 continue
             status = str(candidate.get("status") or "").strip().lower()
-            if status not in {"live", "inplay", "in_play", "in-progress", "in_progress", "inprogress"}:
+            live_statuses = {"live", "inplay", "in_play", "in-progress", "in_progress", "inprogress"}
+            due = False
+            if status in {"notstarted", "not_started", "upcoming", "scheduled"}:
+                try:
+                    kickoff = datetime.fromisoformat(candidate["event_date"].replace("Z", "+00:00"))
+                    due = 0 <= (now - kickoff).total_seconds() <= 7200
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    pass
+            if status not in live_statuses and not due:
                 rejected += 1
                 continue
-            if match_half(candidate) is None and detail_checked < detail_budget:
+            if (due or match_half(candidate) is None) and detail_checked < detail_budget:
                 detail_checked += 1
                 try:
                     detail = api_get(f"events/{candidate['id']}/")
@@ -285,7 +293,7 @@ def main():
                         detail_recovered += 1
                 except (requests.RequestException, ValueError):
                     pass
-            if match_half(candidate) is None:
+            if str(candidate.get("status") or "").strip().lower() not in live_statuses or match_half(candidate) is None:
                 rejected += 1
                 continue
             event_id = str(candidate["id"])
