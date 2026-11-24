@@ -365,6 +365,35 @@ def main():
             except requests.RequestException as exc:
                 print("Esiti conclusi non disponibili:", day, type(exc).__name__)
 
+    # Recover missed halftime snapshots, including already finished alerts.
+    live_by_id = {str(m["id"]): m for m in live_matches if isinstance(m, dict) and m.get("id") is not None}
+    checked_ht = set()
+    for record in sorted(state["alert_outcomes"].values(), key=lambda r: r.get("sent_utc", ""), reverse=True):
+        if record.get("half") != 1 or record.get("halftime_outcome", "pending") != "pending" or not record.get("telegram_message_id"):
+            continue
+        try:
+            age = now - datetime.fromisoformat(record["sent_utc"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if not timedelta(minutes=15) <= age <= timedelta(days=3):
+            continue
+        event_id = str(record["event_id"])
+        match = live_by_id.get(event_id)
+        if match and match_half(match) == 1:
+            continue
+        if event_id in checked_ht:
+            continue
+        if len(checked_ht) >= 8:
+            break
+        checked_ht.add(event_id)
+        try:
+            payload = api_get(f"events/{event_id}/incidents/")
+            ht = football_outcomes.incident_halftime(payload, event_id)
+            if ht is not None and football_outcomes.update_halftime(state, [{"id": event_id, "half_time_score": ht}]):
+                save_state(state)
+        except (requests.RequestException, ValueError):
+            continue
+
     # Modifica soltanto messaggi gia' inviati, senza nuove notifiche.
     if football_telegram_marker.edit_pending(state, live_matches, TELEGRAM_TOKEN, CHAT_ID):
         save_state(state)
