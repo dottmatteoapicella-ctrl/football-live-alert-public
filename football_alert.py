@@ -233,6 +233,11 @@ def main():
         live_matches = []
 
     print("Eventi da events/live/:", len(live_matches))
+    print("Diagnostica feed live events presente:", int("events" in live_data))
+    print("Diagnostica feed live results presente:", int("results" in live_data))
+    print("Diagnostica feed live minuto assente:", sum(isinstance(m, dict) and m.get("current_minute") is None for m in live_matches))
+    print("Diagnostica feed live minuto non valido:", sum(isinstance(m, dict) and m.get("current_minute") is not None and match_half(m) is None for m in live_matches))
+
     # Interroga sempre anche il catalogo: il feed live potrebbe essere parziale.
     # Accetta dal catalogo SOLO eventi con stato esplicitamente live e minuto valido.
     today = datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
