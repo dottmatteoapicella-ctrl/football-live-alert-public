@@ -33,6 +33,23 @@ def halftime_score(match):
     return result if min(result) >= 0 else None
 
 
+
+def incident_halftime(payload, event_id):
+    """Use only an explicit period-end score at minute 45."""
+    if not isinstance(payload, dict) or str(payload.get("event_id")) != str(event_id):
+        return None
+    events = payload.get("incidents")
+    if not isinstance(events, list):
+        return None
+    scores = []
+    for event in events:
+        if not isinstance(event, dict) or event.get("type") != "period" or str(event.get("minute")) != "45":
+            continue
+        value = score(event)
+        if value is not None:
+            scores.append(value)
+    return scores[0] if scores and all(v == scores[0] for v in scores) else None
+
 def update_halftime(state, matches):
     """Resolve H1 outcomes only from a documented, explicit HT score."""
     by_id = {str(m["id"]): m for m in matches if isinstance(m, dict) and m.get("id") is not None}
