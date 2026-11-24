@@ -60,6 +60,9 @@ jobs:
             echo "::error::Controllo fallito; dettagli riservati non pubblicati."
             exit 1
           fi
+      - name: Report aggregato gol
+        if: steps.orario.outputs.attivo == 'true'
+        run: python football_goal_report.py
       - name: Cifra stato
         id: encrypt
         if: always() && steps.orario.outputs.attivo == 'true'
