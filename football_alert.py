@@ -242,6 +242,27 @@ def main():
     print("Diagnostica feed live minuto assente:", sum(isinstance(m, dict) and m.get("current_minute") is None for m in live_matches))
     print("Diagnostica feed live minuto non valido:", sum(isinstance(m, dict) and m.get("current_minute") is not None and match_half(m) is None for m in live_matches))
 
+    # Recover incomplete primary live events before consulting the catalog.
+    primary_checked = 0
+    primary_recovered = 0
+    for index, match in enumerate(live_matches):
+        if primary_checked >= 8:
+            break
+        if match_half(match) is not None and football_outcomes.score(match) is not None:
+            continue
+        primary_checked += 1
+        try:
+            detail = api_get(f"events/{match['id']}/")
+            if isinstance(detail, dict) and str(detail.get("id")) == str(match["id"]):
+                merged = {**match, **detail}
+                if match_half(merged) is not None and football_outcomes.score(merged) is not None:
+                    live_matches[index] = merged
+                    primary_recovered += 1
+        except (requests.RequestException, ValueError):
+            pass
+    print("Diagnostica dettagli feed primario controllati:", primary_checked)
+    print("Diagnostica dettagli feed primario recuperati:", primary_recovered)
+
     # Interroga sempre anche il catalogo: il feed live potrebbe essere parziale.
     # Accetta dal catalogo SOLO eventi con stato esplicitamente live e minuto valido.
     today = datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
@@ -265,7 +286,7 @@ def main():
                 statuses[status_key] = statuses.get(status_key, 0) + 1
         for status_key, count in sorted(statuses.items()):
             print(f"Diagnostica catalogo stato {status_key}: {count}")
-        detail_budget = 8
+        detail_budget = 8 - primary_checked
         detail_checked = 0
         detail_recovered = 0
         for candidate in candidates:
