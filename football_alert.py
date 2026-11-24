@@ -46,7 +46,10 @@ def send_telegram(message):
     result = response.json()
     if not result.get("ok"):
         raise RuntimeError("Telegram non ha confermato l'invio.")
-    return result.get("result", {}).get("message_id")
+    message_id = result.get("result", {}).get("message_id")
+    if not isinstance(message_id, int) or message_id <= 0:
+        raise RuntimeError("Telegram non ha restituito un ID messaggio valido.")
+    return message_id
 
 
 def load_state():
@@ -230,7 +233,8 @@ def main():
     live_data = api_get("events/live/")
     live_matches = live_data.get("events") or live_data.get("results") or []
     if not isinstance(live_matches, list):
-        live_matches = []
+        raise ValueError("Formato feed live non valido")
+    live_matches = [m for m in live_matches if isinstance(m, dict) and m.get("id") is not None]
 
     print("Eventi da events/live/:", len(live_matches))
     print("Diagnostica feed live events presente:", int("events" in live_data))
@@ -250,7 +254,7 @@ def main():
         if not isinstance(candidates, list):
             candidates = []
         print("Eventi da filtro alternativo status=live:", len(candidates))
-        known_ids = {str(m.get("id")) for m in live_matches if isinstance(m, dict)}
+        known_ids = {str(m["id"]): i for i, m in enumerate(live_matches)}
         added = 0
         rejected = 0
         statuses = {}
@@ -286,9 +290,14 @@ def main():
                 continue
             event_id = str(candidate["id"])
             if event_id not in known_ids:
+                known_ids[event_id] = len(live_matches)
                 live_matches.append(candidate)
-                known_ids.add(event_id)
                 added += 1
+            else:
+                index = known_ids[event_id]
+                existing = live_matches[index]
+                if match_half(existing) is None or football_outcomes.score(existing) is None:
+                    live_matches[index] = {**existing, **candidate}
         print("Diagnostica dettagli live controllati:", detail_checked)
         print("Diagnostica dettagli live recuperati:", detail_recovered)
         print("Eventi live aggiunti dal catalogo:", added)
@@ -364,12 +373,11 @@ def main():
             print("Quote pre-match non salvate:", event_id)
             continue
 
-        home_score = match.get("home_score")
-        away_score = match.get("away_score")
-
-        if home_score is None or away_score is None:
+        scores = football_outcomes.score(match)
+        if scores is None:
             live_missing_score += 1
             continue
+        home_score, away_score = scores
 
         side, odd = favorite
 
