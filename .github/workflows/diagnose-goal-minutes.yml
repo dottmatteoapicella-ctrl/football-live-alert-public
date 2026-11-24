@@ -1,0 +1,54 @@
+name: Diagnostica minuti gol
+on:
+  push:
+    branches: [diagnostic/goal-minutes]
+    paths: ['.github/workflows/diagnose-goal-minutes.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Verifica cronologia reti
+        env:
+          BSD_API_KEY: ${{ secrets.BSD_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os, requests, re
+          base = "https://sports.bzzoiro.com/api/v2/"
+          headers = {"Authorization": "Token " + os.environ["BSD_API_KEY"]}
+          def get(path):
+              r = requests.get(base + path, headers=headers, timeout=15)
+              print("HTTP", r.status_code, flush=True)
+              return r.json() if r.ok else {}
+          live = get("events/live/")
+          matches = live.get("events") or live.get("results") or []
+          def score(m):
+              try:
+                  return int(m.get("home_score") or 0) + int(m.get("away_score") or 0)
+              except (ValueError, TypeError):
+                  return 0
+          matches = sorted([m for m in matches if isinstance(m, dict) and m.get("id")], key=score, reverse=True)[:3]
+          print("Campione:", len(matches))
+          def inspect(obj):
+              if isinstance(obj, dict):
+                  safe = {k: v for k,v in obj.items() if k in {"minute","time","added_time","injury_time","type","incident_type","event_type","is_goal","home_score","away_score"} and isinstance(v,(int,bool,str)) and len(str(v)) < 40}
+                  if safe:
+                      print("Campi evento:", safe)
+                  for v in obj.values():
+                      if isinstance(v,(list,dict)): inspect(v)
+              elif isinstance(obj,list):
+                  for v in obj[:100]: inspect(v)
+          for m in matches:
+              for endpoint in ("incidents","commentary"):
+                  print("Endpoint:", endpoint)
+                  data = get(f"events/{m['id']}/{endpoint}/")
+                  print("Schema:", list(data.keys()) if isinstance(data,dict) else type(data).__name__)
+                  inspect(data)
+          PY
