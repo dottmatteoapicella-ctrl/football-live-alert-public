@@ -228,7 +228,7 @@ def main():
 
     # FASE 2: Controlla le partite LIVE.
     live_data = api_get("events/live/")
-    live_matches = live_data.get("events", [])
+    live_matches = live_data.get("events") or live_data.get("results") or []
     if not isinstance(live_matches, list):
         live_matches = []
 
@@ -253,12 +253,27 @@ def main():
         known_ids = {str(m.get("id")) for m in live_matches if isinstance(m, dict)}
         added = 0
         rejected = 0
+        detail_budget = 8
+        detail_checked = 0
+        detail_recovered = 0
         for candidate in candidates:
             if not isinstance(candidate, dict) or candidate.get("id") is None:
                 rejected += 1
                 continue
             status = str(candidate.get("status") or "").strip().lower()
-            if status not in {"live", "inplay", "in_play", "in-progress", "in_progress"} or match_half(candidate) is None:
+            if status not in {"live", "inplay", "in_play", "in-progress", "in_progress"}:
+                rejected += 1
+                continue
+            if match_half(candidate) is None and detail_checked < detail_budget:
+                detail_checked += 1
+                try:
+                    detail = api_get(f"events/{candidate['id']}/")
+                    if isinstance(detail, dict) and str(detail.get("id")) == str(candidate["id"]) and detail.get("status") == "live" and match_half(detail) is not None:
+                        candidate = {**candidate, **detail}
+                        detail_recovered += 1
+                except (requests.RequestException, ValueError):
+                    pass
+            if match_half(candidate) is None:
                 rejected += 1
                 continue
             event_id = str(candidate["id"])
@@ -266,6 +281,8 @@ def main():
                 live_matches.append(candidate)
                 known_ids.add(event_id)
                 added += 1
+        print("Diagnostica dettagli live controllati:", detail_checked)
+        print("Diagnostica dettagli live recuperati:", detail_recovered)
         print("Eventi live aggiunti dal catalogo:", added)
         print("Eventi catalogo scartati per stato/minuto:", rejected)
     except requests.RequestException as exc:
