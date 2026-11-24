@@ -1,0 +1,77 @@
+name: Football Live Alert
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: football-live-alert
+  cancel-in-progress: false
+jobs:
+  football-alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Orario italiano
+        id: orario
+        run: |
+          ORA=$(TZ=Europe/Rome date +%H%M)
+          if [[ "$ORA" > "0759" && "$ORA" < "2400" ]]; then
+            echo "attivo=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.orario.outputs.attivo == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.orario.outputs.attivo == 'true'
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+        if: steps.orario.outputs.attivo == 'true'
+      - uses: actions/cache/restore@v4
+        if: steps.orario.outputs.attivo == 'true'
+        with:
+          path: football-state.enc
+          key: football-encrypted-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: football-encrypted-v1-
+      - name: Ripristina stato protetto
+        if: steps.orario.outputs.attivo == 'true'
+        env:
+          STATE_PASSWORD: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          test -n "$STATE_PASSWORD"
+          if [ -f football-state.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in football-state.enc -out football_alert_state.json -pass env:STATE_PASSWORD
+            python -m json.tool football_alert_state.json >/dev/null
+          fi
+      - name: Controlla partite
+        if: steps.orario.outputs.attivo == 'true'
+        env:
+          BSD_API_KEY: ${{ secrets.BSD_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          test -n "$BSD_API_KEY" && test -n "$TELEGRAM_BOT_TOKEN" && test -n "$TELEGRAM_CHAT_ID"
+          if python football_alert.py > /tmp/football-run.log 2>&1; then
+            echo "Controllo completato."
+            grep -E '^(Nuovi alert Telegram|Richieste quote|Partite con minuto valido): [0-9]+$' /tmp/football-run.log || true
+          else
+            echo "::error::Controllo fallito; dettagli riservati non pubblicati."
+            exit 1
+          fi
+      - name: Cifra stato
+        id: encrypt
+        if: always() && steps.orario.outputs.attivo == 'true'
+        env:
+          STATE_PASSWORD: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          if [ -s football_alert_state.json ] && [ -n "$STATE_PASSWORD" ]; then
+            python -m json.tool football_alert_state.json >/dev/null
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in football_alert_state.json -out football-state.enc -pass env:STATE_PASSWORD
+            echo "saved=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/cache/save@v4
+        if: always() && steps.encrypt.outputs.saved == 'true'
+        with:
+          path: football-state.enc
+          key: football-encrypted-v1-${{ github.run_id }}-${{ github.run_attempt }}
