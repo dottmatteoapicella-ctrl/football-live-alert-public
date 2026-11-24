@@ -253,6 +253,14 @@ def main():
         known_ids = {str(m.get("id")) for m in live_matches if isinstance(m, dict)}
         added = 0
         rejected = 0
+        statuses = {}
+        for m in candidates:
+            if isinstance(m, dict):
+                raw = str(m.get("status") or "").strip().lower()
+                status_key = raw if raw in {"live", "inprogress", "in_progress", "inplay", "notstarted", "upcoming", "finished", "cancelled", "postponed", "scheduled", "ht", "halftime"} else "other"
+                statuses[status_key] = statuses.get(status_key, 0) + 1
+        for status_key, count in sorted(statuses.items()):
+            print(f"Diagnostica catalogo stato {status_key}: {count}")
         detail_budget = 8
         detail_checked = 0
         detail_recovered = 0
@@ -261,14 +269,14 @@ def main():
                 rejected += 1
                 continue
             status = str(candidate.get("status") or "").strip().lower()
-            if status not in {"live", "inplay", "in_play", "in-progress", "in_progress"}:
+            if status not in {"live", "inplay", "in_play", "in-progress", "in_progress", "inprogress"}:
                 rejected += 1
                 continue
             if match_half(candidate) is None and detail_checked < detail_budget:
                 detail_checked += 1
                 try:
                     detail = api_get(f"events/{candidate['id']}/")
-                    if isinstance(detail, dict) and str(detail.get("id")) == str(candidate["id"]) and detail.get("status") == "live" and match_half(detail) is not None:
+                    if isinstance(detail, dict) and str(detail.get("id")) == str(candidate["id"]) and str(detail.get("status") or "").strip().lower() in {"live", "inplay", "in_play", "in-progress", "in_progress", "inprogress"} and match_half(detail) is not None:
                         candidate = {**candidate, **detail}
                         detail_recovered += 1
                 except (requests.RequestException, ValueError):
