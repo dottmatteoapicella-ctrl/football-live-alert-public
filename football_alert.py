@@ -16,6 +16,7 @@ api_monitor.install()
 API_KEY = os.environ["BSD_API_KEY"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
 
 BASE_URL = "https://sports.bzzoiro.com/api/v2"
 HEADERS = {"Authorization": f"Token {API_KEY}"}
@@ -36,10 +37,10 @@ def api_get(endpoint, params=None):
     return response.json()
 
 
-def send_telegram(message):
+def send_telegram(message, chat_id=None):
     response = requests.post(
         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-        data={"chat_id": CHAT_ID, "text": message},
+        data={"chat_id": chat_id or CHAT_ID, "text": message},
         timeout=20,
     )
     response.raise_for_status()
@@ -51,6 +52,16 @@ def send_telegram(message):
     if not isinstance(message_id, int) or message_id <= 0:
         raise RuntimeError("Telegram non ha restituito un ID messaggio valido.")
     return message_id
+
+
+def send_channel(record, message):
+    if not CHANNEL_ID or CHANNEL_ID == CHAT_ID:
+        return
+    try:
+        record["telegram_channel_message_id"] = send_telegram(message, CHANNEL_ID)
+        print("Invio canale Telegram: 1")
+    except (requests.RequestException, RuntimeError, ValueError):
+        print("Invio canale Telegram fallito: 1")
 
 
 def load_state():
@@ -348,13 +359,16 @@ def main():
         home, away = match.get("home_team", "Casa"), match.get("away_team", "Trasferta")
         a, b = record["score"]
         try:
-            record["telegram_message_id"] = send_telegram(
+            message = (
                 "🔥 POE - PRESSIONE OFFENSIVA ELEVATA (TEST)\n\n"
                 f"{home} {a}-{b} {away}\n"
                 f"Squadra in pressione: {home if side == 'home' else away}\n"
                 f"Minuto: {record['minute']} | Indice: {record['rating']}/100\n"
                 "Obiettivo sperimentale: gol entro 15 minuti di gioco."
             )
+            record["telegram_message_id"] = send_telegram(message)
+            save_state(state)
+            send_channel(record, message)
             save_state(state)
         except (requests.RequestException, RuntimeError, ValueError):
             print("POE: invio Telegram non confermato")
@@ -425,7 +439,7 @@ def main():
         save_state(state)
 
     # Modifica soltanto messaggi gia' inviati, senza nuove notifiche.
-    if football_telegram_marker.edit_pending(state, live_matches, TELEGRAM_TOKEN, CHAT_ID):
+    if football_telegram_marker.edit_pending(state, live_matches, TELEGRAM_TOKEN, CHAT_ID, CHANNEL_ID):
         save_state(state)
 
     for match in live_matches:
@@ -500,6 +514,9 @@ def main():
             record["telegram_message_id"] = telegram_message_id
             record["telegram_text"] = message
         save_state(state)
+        if record is not None:
+            send_channel(record, message)
+            save_state(state)
 
         alerts_sent += 1
         print("Alert inviato:", event_id, "tempo:", half)
