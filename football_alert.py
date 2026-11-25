@@ -340,6 +340,24 @@ def main():
 
     football_poe.observe(state, live_matches, now)
     save_state(state)
+    for match in live_matches:
+        record = state["poe"]["signals"].get(str(match["id"]))
+        if not record or record.get("time") != now.isoformat() or record.get("telegram_message_id"):
+            continue
+        side = record["side"]
+        home, away = match.get("home_team", "Casa"), match.get("away_team", "Trasferta")
+        a, b = record["score"]
+        try:
+            record["telegram_message_id"] = send_telegram(
+                "🔥 POE - PRESSIONE OFFENSIVA ELEVATA (TEST)\n\n"
+                f"{home} {a}-{b} {away}\n"
+                f"Squadra in pressione: {home if side == 'home' else away}\n"
+                f"Minuto: {record['minute']} | Indice: {record['rating']}/100\n"
+                "Obiettivo sperimentale: gol entro 15 minuti di gioco."
+            )
+            save_state(state)
+        except (requests.RequestException, RuntimeError, ValueError):
+            print("POE: invio Telegram non confermato")
 
     # Aggiorna gli esiti senza cambiare le regole degli alert.
     if football_outcomes.update_halftime(state, live_matches):
