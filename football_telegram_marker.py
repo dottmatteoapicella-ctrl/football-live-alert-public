@@ -81,7 +81,56 @@ def official_goal_minutes(record, match):
             continue
         label = f"{t[0]}'" if not t[1] else f"{t[0]}+{t[1]}'"
         result.append(label)
-    return list(dict.fromkeys(result))
+    return sorted(set(result), key=lambda s: tuple(int(x) for x in s.rstrip("\'").split("+")))
+
+
+def recover_goal_minutes(state, live_by_id, now, api_get, cache, checked):
+    """Backfill recent positive alerts with explicit incident goal minutes."""
+    from datetime import datetime, timedelta
+    changed = False
+    for record in sorted(state.get("alert_outcomes", {}).values(),
+                         key=lambda r: r.get("sent_utc", ""), reverse=True):
+        try:
+            age = now - datetime.fromisoformat(record["sent_utc"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if not timedelta(0) <= age <= timedelta(days=3):
+            continue
+        eid = str(record.get("event_id"))
+        result = desired_marker(record, live_by_id.get(eid))
+        if not result or not result[0].startswith("✅"):
+            continue
+        expected = sum(result[1]) - sum(record["score_at_alert"])
+        existing = record.get("official_goal_minutes", [])
+        if len(existing) >= expected:
+            continue
+        if eid not in cache:
+            if eid in checked or len(checked) >= 8:
+                continue
+            last = record.get("goal_incidents_checked_at")
+            if last:
+                try:
+                    if now - datetime.fromisoformat(last) < timedelta(minutes=60):
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            checked.add(eid)
+            record["goal_incidents_checked_at"] = now.isoformat()
+            changed = True
+            try:
+                cache[eid] = api_get(f"events/{eid}/incidents/")
+            except (requests.RequestException, ValueError):
+                continue
+        payload = cache[eid]
+        if not isinstance(payload, dict) or str(payload.get("event_id")) != eid:
+            continue
+        minutes = official_goal_minutes(record, {"events": payload.get("incidents")})
+        if minutes:
+            merged = list(dict.fromkeys(existing + minutes))
+            if merged != existing:
+                record["official_goal_minutes"] = merged
+                changed = True
+    return changed
 
 
 def edit_pending(state, live_matches, token, chat_id):
