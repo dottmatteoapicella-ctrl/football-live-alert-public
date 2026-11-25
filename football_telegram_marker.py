@@ -133,7 +133,7 @@ def recover_goal_minutes(state, live_by_id, now, api_get, cache, checked):
     return changed
 
 
-def edit_pending(state, live_matches, token, chat_id):
+def edit_pending(state, live_matches, token, chat_id, channel_id=None):
     """Edit a single original message for the goal marker and later final score."""
     by_id = {str(m["id"]): m for m in live_matches if isinstance(m, dict) and m.get("id") is not None}
     changed = False
@@ -167,23 +167,27 @@ def edit_pending(state, live_matches, token, chat_id):
             else:
                 updated += "\n"
             updated += f"🏁 RISULTATO FINALE: {final[0]}-{final[1]}"
-        if updated == record.get("telegram_last_text"):
-            continue
-        try:
-            response = requests.post(
-                f"https://api.telegram.org/bot{token}/editMessageText",
-                data={"chat_id": chat_id, "message_id": record["telegram_message_id"], "text": updated},
-                timeout=20,
-            )
-            response.raise_for_status()
-            if not response.json().get("ok"):
-                raise ValueError("Telegram edit not confirmed")
-        except (requests.RequestException, ValueError) as exc:
-            print("Modifica Telegram non riuscita:", record.get("event_id"), type(exc).__name__)
-            continue
-        record["telegram_last_text"] = updated
-        if marker:
-            record["telegram_marked"] = marker
-        changed = True
-        print("Messaggio Telegram aggiornato:", record.get("event_id"), marker, "finale:", final if final_valid else "non disponibile")
+        destinations = [(chat_id, "telegram_message_id", "telegram_last_text")]
+        if channel_id and channel_id != chat_id and record.get("telegram_channel_message_id"):
+            destinations.append((channel_id, "telegram_channel_message_id", "telegram_channel_last_text"))
+        for destination, id_key, text_key in destinations:
+            if updated == record.get(text_key):
+                continue
+            try:
+                response = requests.post(
+                    f"https://api.telegram.org/bot{token}/editMessageText",
+                    data={"chat_id": destination, "message_id": record[id_key], "text": updated},
+                    timeout=20,
+                )
+                response.raise_for_status()
+                if not response.json().get("ok"):
+                    raise ValueError("Telegram edit not confirmed")
+            except (requests.RequestException, ValueError) as exc:
+                print("Modifica Telegram non riuscita:", record.get("event_id"), type(exc).__name__)
+                continue
+            record[text_key] = updated
+            if marker:
+                record["telegram_marked"] = marker
+            changed = True
+            print("Messaggio Telegram aggiornato:", record.get("event_id"), marker, "finale:", final if final_valid else "non disponibile")
     return changed
