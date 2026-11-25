@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import requests
 import api_monitor
 import football_outcomes
+import football_poe
 import football_telegram_marker
 api_monitor.install()
 
@@ -336,6 +337,9 @@ def main():
     print("Partite con minuto valido:", sum(
         match_half(m) is not None for m in live_matches if isinstance(m, dict)
     ))
+
+    football_poe.observe(state, live_matches, now)
+    save_state(state)
 
     # Aggiorna gli esiti senza cambiare le regole degli alert.
     if football_outcomes.update_halftime(state, live_matches):
