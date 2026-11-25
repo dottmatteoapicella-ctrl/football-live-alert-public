@@ -368,6 +368,7 @@ def main():
     # Recover missed halftime snapshots, including already finished alerts.
     live_by_id = {str(m["id"]): m for m in live_matches if isinstance(m, dict) and m.get("id") is not None}
     checked_ht = set()
+    incident_cache = {}
     for record in sorted(state["alert_outcomes"].values(), key=lambda r: r.get("sent_utc", ""), reverse=True):
         if record.get("half") != 1 or record.get("halftime_outcome", "pending") != "pending" or not record.get("telegram_message_id"):
             continue
@@ -388,11 +389,18 @@ def main():
         checked_ht.add(event_id)
         try:
             payload = api_get(f"events/{event_id}/incidents/")
+            incident_cache[event_id] = payload
             ht = football_outcomes.incident_halftime(payload, event_id)
             if ht is not None and football_outcomes.update_halftime(state, [{"id": event_id, "half_time_score": ht}]):
                 save_state(state)
         except (requests.RequestException, ValueError):
             continue
+
+    # Recover official goal times, sharing the halftime incident request budget.
+    if football_telegram_marker.recover_goal_minutes(
+        state, live_by_id, now, api_get, incident_cache, checked_ht
+    ):
+        save_state(state)
 
     # Modifica soltanto messaggi gia' inviati, senza nuove notifiche.
     if football_telegram_marker.edit_pending(state, live_matches, TELEGRAM_TOKEN, CHAT_ID):
