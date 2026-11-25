@@ -84,5 +84,25 @@ class MarkerTests(unittest.TestCase):
         self.assertFalse(marker.edit_pending(state,live,"token","chat"))
         self.assertEqual(post.call_count,1)
         self.assertEqual(post.call_args.kwargs["data"]["message_id"],123)
+    @patch("football_telegram_marker.requests.post")
+    def test_incident_backfill_finished_alert(self, post):
+        from datetime import datetime, timezone
+        now = datetime(2026, 11, 25, 10, tzinfo=timezone.utc)
+        r = self.record(2)
+        r.update(minute="60", sent_utc="2026-11-24T20:00:00+00:00",
+                 outcome="verified", final_score=[2,1])
+        state = {"alert_outcomes":{"42:H2":r}}
+        api = Mock(return_value={"event_id":42,"incidents":[
+            {"type":"goal","minute":"90+3"},
+            {"type":"goal","minute":"67"},
+            {"type":"goal","minute":"20"}]})
+        self.assertTrue(marker.recover_goal_minutes(state, {}, now, api, {}, set()))
+        self.assertEqual(r["official_goal_minutes"], ["67'", "90+3'"])
+        post.return_value.json.return_value = {"ok":True}
+        self.assertTrue(marker.edit_pending(state, [], "token", "chat"))
+        self.assertIn("67', 90+3'", post.call_args.kwargs["data"]["text"])
+        self.assertFalse(marker.recover_goal_minutes(state, {}, now, api, {}, set()))
+        self.assertEqual(api.call_count, 1)
+
 if __name__=="__main__":
     unittest.main()
