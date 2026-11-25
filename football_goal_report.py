@@ -9,3 +9,6 @@ for half in (1, 2):
     valid = [r for r in rows if r.get(status) == "verified" and isinstance(r.get(goals), int) and r[goals] >= 0]
     wins = sum(r[goals] > 0 for r in valid)
     print("FOOTBALL_GOAL_REPORT:", json.dumps({"half": half, "alerts": len(rows), "verified": len(valid), "with_goal": wins, "without_goal": len(valid)-wins, "goals": sum(r[goals] for r in valid), "pending": sum(r.get(status, "pending") == "pending" for r in rows), "other": len(rows)-len(valid)-sum(r.get(status, "pending") == "pending" for r in rows)}))
+
+import football_poe
+print("FOOTBALL_POE_REPORT:", json.dumps(football_poe.report(state)))
