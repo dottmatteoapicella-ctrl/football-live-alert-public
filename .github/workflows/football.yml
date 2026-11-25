@@ -2,6 +2,7 @@ name: Football Live Alert
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/football.yml'
 permissions:
@@ -51,11 +52,12 @@ jobs:
           BSD_API_KEY: ${{ secrets.BSD_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: |
           test -n "$BSD_API_KEY" && test -n "$TELEGRAM_BOT_TOKEN" && test -n "$TELEGRAM_CHAT_ID"
           if python football_alert.py > /tmp/football-run.log 2>&1; then
             echo "Controllo completato."
-            grep -E '^(Nuovi alert Telegram|Richieste quote|Partite con minuto valido|Eventi da events/live/|Eventi da filtro alternativo status=live|Eventi live aggiunti dal catalogo|Eventi catalogo scartati per stato/minuto|Eventi live esclusi per stato/minuto|Eventi live senza favorita pre-match|Eventi live senza punteggio|Nuove favorite salvate|Quote gia. in cache|Risposte quote senza favorita valida|Richieste quote fallite|Diagnostica catalogo stato [a-z_]+|Diagnostica dettagli live (controllati|recuperati)|Diagnostica feed live (events presente|results presente|minuto assente|minuto non valido)): [0-9]+$' /tmp/football-run.log || true
+            grep -E '^(Invio canale Telegram|Invio canale Telegram fallito|Nuovi alert Telegram|Richieste quote|Partite con minuto valido|Eventi da events/live/|Eventi da filtro alternativo status=live|Eventi live aggiunti dal catalogo|Eventi catalogo scartati per stato/minuto|Eventi live esclusi per stato/minuto|Eventi live senza favorita pre-match|Eventi live senza punteggio|Nuove favorite salvate|Quote gia. in cache|Risposte quote senza favorita valida|Richieste quote fallite|Diagnostica catalogo stato [a-z_]+|Diagnostica dettagli live (controllati|recuperati)|Diagnostica feed live (events presente|results presente|minuto assente|minuto non valido)): [0-9]+$' /tmp/football-run.log || true
           else
             echo "::error::Controllo fallito; dettagli riservati non pubblicati."
             exit 1
