@@ -16,7 +16,6 @@ print("FOOTBALL_POE_REPORT:", json.dumps(football_poe.report(state)))
 print("FOOTBALL_POE_V2_REPORT:", json.dumps(football_poe.report_v2(state)))
 
 # Timing is deliberately restricted to ordinary minutes and verified score progression.
-from statistics import mean, median
-from football_goal_timing import timing_report
+from football_telegram_marker import timing_report
 for half in (1, 2):
     print("FOOTBALL_GOAL_TIMING:", json.dumps(timing_report(records, half)))
