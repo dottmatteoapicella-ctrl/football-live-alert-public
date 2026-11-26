@@ -373,6 +373,48 @@ def main():
         except (requests.RequestException, RuntimeError, ValueError):
             print("POE: invio Telegram non confermato")
 
+    football_poe.observe_v2(state, live_matches, now)
+    save_state(state)
+    for match in live_matches:
+        record = state["poe_v2"]["signals"].get(str(match.get("id")))
+        if not record or record.get("time") != now.isoformat():
+            continue
+        home, away = match.get("home_team", "Casa"), match.get("away_team", "Trasferta")
+        a,b=record["score"]
+        h,v=record["deltas"]
+        message=(
+            "🔥 POE 2.0 - PRESSIONE OFFENSIVA (TEST)\n\n"
+            f"{home} {a}-{b} {away}\n"
+            f"Squadra dominante: {home if record['side']=='home' else away}\n"
+            f"Minuto: {record['minute']} | Indice: {record['rating']}/100\n"
+            f"Statistiche normalizzate a 10 minuti (finestra {record['window']}):\n"
+            f"Tiri: {h[2]} - {v[2]} | In porta: {h[1]} - {v[1]}\n"
+            f"xG: {h[0]} - {v[0]}\n"
+            "Obiettivo: gol entro 15 minuti di gioco.\n"
+        )
+        record["telegram_text"]=message
+        try:
+            record["telegram_message_id"]=send_telegram(message+"⏳ Esito in attesa")
+            save_state(state)
+            send_channel(record,message+"⏳ Esito in attesa")
+            save_state(state)
+        except (requests.RequestException, RuntimeError, ValueError):
+            print("POE 2.0: invio Telegram non confermato")
+    for record in state["poe_v2"]["signals"].values():
+        marker={"goal_observed":"✅ Gol osservato entro 15 minuti","no_goal_observed":"❌ Nessun gol entro 15 minuti","unknown":"⚪ Esito non verificabile"}.get(record["result"])
+        if not marker or not record.get("telegram_text"):
+            continue
+        for chat,key in ((CHAT_ID,"telegram_message_id"),(CHANNEL_ID,"telegram_channel_message_id")):
+            if not chat or not record.get(key) or record.get(key+"_marker")==marker:
+                continue
+            try:
+                response=requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText",json={"chat_id":chat,"message_id":record[key],"text":record["telegram_text"]+marker},timeout=15)
+                if response.ok and response.json().get("ok"):
+                    record[key+"_marker"]=marker
+                    save_state(state)
+            except (requests.RequestException, ValueError):
+                pass
+
     # Aggiorna gli esiti senza cambiare le regole degli alert.
     if football_outcomes.update_halftime(state, live_matches):
         save_state(state)
