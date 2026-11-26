@@ -122,6 +122,7 @@ def observe(state, now, save):
     budget["identity_at"] = now.isoformat()
     save(state)
     candidates = []
+    minutes = {}
     for g in live:
         clock = g.get("clock") or {}
         minute = clock.get("playedSeconds")
