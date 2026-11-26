@@ -1,7 +1,42 @@
 import os
 from datetime import datetime
 import math
+import unicodedata
+import re
 import requests
+
+
+def normalized(value):
+    if isinstance(value, dict):
+        value = value.get("name")
+    if not isinstance(value, str):
+        return ""
+    return " ".join(re.findall(r"[a-z0-9]+", unicodedata.normalize("NFKD", value.casefold()).encode("ascii", "ignore").decode()))
+
+
+def kickoff(value):
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def associate(primary, secondary):
+    pairs = {}
+    for g in secondary:
+        home, away = normalized(g.get("home")), normalized(g.get("away"))
+        start = kickoff(g.get("startTime"))
+        if not home or not away or not start or g.get("id") is None:
+            continue
+        candidates = []
+        for m in primary:
+            t = kickoff(m.get("event_date"))
+            if t and abs((t-start).total_seconds()) <= 900 and normalized(m.get("home_team")) == home and normalized(m.get("away_team")) == away and m.get("id") is not None:
+                candidates.append(str(m["id"]))
+        if len(candidates) == 1:
+            pairs[str(g["id"])] = candidates[0]
+    return {k:v for k,v in pairs.items() if list(pairs.values()).count(v) == 1}
 
 
 def league_id(game):
@@ -77,6 +112,9 @@ def observe(state, now, save):
             and g["status"].get("type") == "inprogress"]
     leagues = {str(g["league"].get("id")) for g in live if isinstance(g.get("league"), dict)}
     print("DataSports live:", len(live), "leagues:", len(leagues))
+    budget["live_identity"] = [{k:g.get(k) for k in ("id","home","away","startTime")} for g in live]
+    budget["identity_at"] = now.isoformat()
+    save(state)
     candidates = []
     for g in live:
         clock = g.get("clock") or {}
