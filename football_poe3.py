@@ -23,7 +23,7 @@ def evaluate(before, after, elapsed, score, red_cards):
         xg, target, shots = (d[i] for d in deltas)
         dominance = sum(d[i]/sum(d) if sum(d) else 0 for d in deltas)/3
         rating = 40*min(xg/.6,1)+25*min(target/3,1)+20*dominance+15*min(shots/5,1)
-        if xg >= .25 and target >= 1 and rating >= 75:
+        if xg >= .20 and target >= 1 and rating >= 65:
             ratings.append((rating, i))
     if not ratings:
         return None

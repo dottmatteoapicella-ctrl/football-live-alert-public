@@ -145,7 +145,7 @@ def observe(state, now, save):
                 minute = ((now - start).total_seconds() + clock["periodOffsetSeconds"]) / 60
             except (KeyError, ValueError, TypeError, AttributeError):
                 continue
-        if 25 <= minute <= 80 and isinstance(g.get("id"), int):
+        if 20 <= minute <= 85 and isinstance(g.get("id"), int):
             candidates.append(g)
             minutes[str(g["id"])] = minute
     seen = budget.setdefault("seen", {})
@@ -160,8 +160,9 @@ def observe(state, now, save):
         selected += (other or candidates[1:])[:1]
     # Follow-ups take precedence; extra live calls share the same hard cap.
     selected = sorted([g for g in candidates if str(g["id"]) in due], key=lambda g: snapshots[str(g["id"])]["at"]) + ([g for g in selected if str(g["id"]) not in due] if fresh else [])
+    print("DataSports POE3 candidates:", len(candidates), "followups:", len(due), "selected:", min(2, len(selected)))
     for g in selected[:2]:
-        if budget["stats"] >= 32 or budget["used"] >= 80 or budget.get("blocked"):
+        if budget["stats"] >= 40 or budget["used"] >= 80 or budget.get("blocked"):
             break
         budget["stats"] += 1
         seen[str(g["id"])] = now.isoformat()
@@ -181,10 +182,11 @@ def observe(state, now, save):
         red = [v.get("redCards") for v in scores]
         old = snapshots.get(gid)
         if complete and all(type(v) is int and v >= 0 for v in score+red):
-            if old and gid not in signals and 40 <= minute <= 80 and old["score"] == score and old["red"] == red:
+            if old and gid not in signals and 30 <= minute <= 85 and old["score"] == score and old["red"] == red:
                 wall = (now-kickoff(old["at"])).total_seconds()/60
                 if 5 <= wall <= 15:
                     result = football_poe3.evaluate(old["stats"], stats, minute-old["minute"], score, red)
+                    print("DataSports POE3 paired:", 1, "qualified:", int(bool(result)))
                     if result:
                         signals[gid] = dict(result, at=now.isoformat(), minute=minute, score=score, result="pending", home=normalized(g.get("home")), away=normalized(g.get("away")))
             snapshots[gid] = dict(at=now.isoformat(), minute=minute, stats=stats, score=score, red=red)
