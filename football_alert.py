@@ -359,6 +359,25 @@ def main():
         identities = ds.get("live_identity", [])
         pairs = football_datasports.associate(live_matches, identities)
         print("DataSports matched:", len(pairs), "unmatched:", len(identities) - len(pairs))
+    for gid, record in state.get("poe3_signals", {}).items():
+        if record.get("at") != now.isoformat() or record.get("telegram_attempted"):
+            continue
+        # Reserve before sending: never repeat an uncertain delivery.
+        record["telegram_attempted"] = True
+        save_state(state)
+        message = ("⚽ POE 3.0 SPERIMENTALE\n"
+                   + record["home"] + " - " + record["away"] + "\n"
+                   + "Minuto: " + str(int(record["minute"])) + "\n"
+                   + "Indice POE: " + str(record["rating"]) + "/100\n"
+                   + "Obiettivo: gol entro 15 minuti di gioco\n"
+                   + "Indice sperimentale, non probabilità di gol.")
+        try:
+            record["telegram_message_id"] = send_telegram(message)
+            save_state(state)
+            send_channel(record, message)
+            save_state(state)
+        except (requests.RequestException, RuntimeError, ValueError):
+            print("Invio POE3 fallito")
     print("Diagnostica POE feed:", len(live_matches), "con statistiche:", sum(isinstance(m.get("statistics"), dict) and bool(m["statistics"]) for m in live_matches), "con dati completi:", sum(all(football_poe.side_stats(m, side) is not None for side in ("home", "away")) for m in live_matches))
     football_poe.observe(state, live_matches, now)
     save_state(state)
