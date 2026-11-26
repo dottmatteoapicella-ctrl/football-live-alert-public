@@ -353,6 +353,12 @@ def main():
         match_half(m) is not None for m in live_matches if isinstance(m, dict)
     ))
 
+    ds = state.get("datasports", {})
+    identity_at = football_datasports.kickoff(ds.get("identity_at"))
+    if identity_at and 0 <= (now - identity_at).total_seconds() <= 1800:
+        identities = ds.get("live_identity", [])
+        pairs = football_datasports.associate(live_matches, identities)
+        print("DataSports matched:", len(pairs), "unmatched:", len(identities) - len(pairs))
     print("Diagnostica POE feed:", len(live_matches), "con statistiche:", sum(isinstance(m.get("statistics"), dict) and bool(m["statistics"]) for m in live_matches), "con dati completi:", sum(all(football_poe.side_stats(m, side) is not None for side in ("home", "away")) for m in live_matches))
     football_poe.observe(state, live_matches, now)
     save_state(state)
