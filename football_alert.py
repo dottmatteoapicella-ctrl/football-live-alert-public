@@ -339,6 +339,8 @@ def main():
                 existing = live_matches[index]
                 if match_half(existing) is None or football_outcomes.score(existing) is None:
                     live_matches[index] = {**existing, **candidate}
+                elif not existing.get("statistics") and isinstance(candidate.get("statistics"), dict):
+                    live_matches[index] = {**existing, "statistics": candidate["statistics"]}
         print("Diagnostica dettagli live controllati:", detail_checked)
         print("Diagnostica dettagli live recuperati:", detail_recovered)
         print("Eventi live aggiunti dal catalogo:", added)
@@ -349,6 +351,7 @@ def main():
         match_half(m) is not None for m in live_matches if isinstance(m, dict)
     ))
 
+    print("Diagnostica POE feed:", len(live_matches), "con statistiche:", sum(isinstance(m.get("statistics"), dict) and bool(m["statistics"]) for m in live_matches), "con dati completi:", sum(all(football_poe.side_stats(m, side) is not None for side in ("home", "away")) for m in live_matches))
     football_poe.observe(state, live_matches, now)
     save_state(state)
     for match in live_matches:
@@ -377,7 +380,7 @@ def main():
     save_state(state)
     for match in live_matches:
         record = state["poe_v2"]["signals"].get(str(match.get("id")))
-        if not record or record.get("time") != now.isoformat():
+        if not record or record.get("time") != now.isoformat() or record.get("telegram_message_id"):
             continue
         home, away = match.get("home_team", "Casa"), match.get("away_team", "Trasferta")
         a,b=record["score"]
