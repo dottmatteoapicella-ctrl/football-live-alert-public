@@ -31,7 +31,6 @@ def associate(primary, secondary):
         if not home or not away or not start or g.get("id") is None:
             continue
         candidates = []
-    minutes = {}
         for m in primary:
             t = kickoff(m.get("event_date"))
             if t and abs((t-start).total_seconds()) <= 900 and normalized(m.get("home_team")) == home and normalized(m.get("away_team")) == away and m.get("id") is not None:
@@ -177,7 +176,7 @@ def observe(state, now, save):
                 if 5 <= wall <= 15:
                     result = football_poe3.evaluate(old["stats"], stats, minute-old["minute"], score, red)
                     if result:
-                        signals[gid] = dict(result, at=now.isoformat(), minute=minute, score=score, result="pending")
+                        signals[gid] = dict(result, at=now.isoformat(), minute=minute, score=score, result="pending", home=normalized(g.get("home")), away=normalized(g.get("away")))
             snapshots[gid] = dict(at=now.isoformat(), minute=minute, stats=stats, score=score, red=red)
         save(state)
         print("DataSports statistics:", int(complete), "momentum:", int("momentum" in stats))
