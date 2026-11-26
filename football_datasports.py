@@ -4,6 +4,7 @@ import math
 import unicodedata
 import re
 import requests
+import football_poe3
 
 
 def normalized(value):
@@ -80,10 +81,15 @@ def observe(state, now, save):
         budget.update(day=day, used=0, stats=0)
     history = state.setdefault("datasports_leagues", {})
     slot = now.hour * 2 + now.minute // 30
-    if budget.get("slot") == slot:
+    fresh = budget.get("slot") != slot
+    snapshots = budget.setdefault("poe3_snapshots", {})
+    signals = state.setdefault("poe3_signals", {})
+    due = [k for k,v in snapshots.items() if 5 <= (now-kickoff(v["at"])).total_seconds()/60 <= 15 and k not in signals]
+    if not fresh and not due:
         return
-    budget["slot"] = slot
-    save(state)
+    if fresh:
+        budget["slot"] = slot
+        save(state)
 
     def get(path):
         if budget["used"] >= 80 or budget.get("blocked"):
@@ -129,6 +135,7 @@ def observe(state, now, save):
                 continue
         if 25 <= minute <= 80 and isinstance(g.get("id"), int):
             candidates.append(g)
+            minutes[str(g["id"])] = minute
     seen = budget.setdefault("seen", {})
     candidates.sort(key=lambda g: priority(g, history, seen))
     # One exploitation and one exploration candidate, preferably different leagues.
@@ -139,7 +146,9 @@ def observe(state, now, save):
                                   history.get(league_id(g), {}).get("missing", 0),
                                   seen.get(str(g["id"]), ""), g["id"]))
         selected += (other or candidates[1:])[:1]
-    for g in selected:
+    # Follow-ups take precedence; extra live calls share the same hard cap.
+    selected = [g for g in candidates if str(g["id"]) in due] + ([g for g in selected if str(g["id"]) not in due] if fresh else [])
+    for g in selected[:2]:
         if budget["stats"] >= 32 or budget["used"] >= 80 or budget.get("blocked"):
             break
         budget["stats"] += 1
@@ -155,6 +164,39 @@ def observe(state, now, save):
             record = history.setdefault(league, {"ok": 0, "missing": 0})
             field = "ok" if complete else "missing"
             record[field] += 1
+        gid = str(g["id"])
+        minute = minutes[gid]
+        scores = [g.get(k) or {} for k in ("homeScore", "awayScore")]
+        score = [v.get("current") for v in scores]
+        red = [v.get("redCards") for v in scores]
+        old = snapshots.get(gid)
+        if complete and all(type(v) is int and v >= 0 for v in score+red):
+            if old and gid not in signals and 40 <= minute <= 80 and old["score"] == score and old["red"] == red:
+                wall = (now-kickoff(old["at"])).total_seconds()/60
+                if 5 <= wall <= 15:
+                    result = football_poe3.evaluate(old["stats"], stats, minute-old["minute"], score, red)
+                    if result:
+                        signals[gid] = dict(result, at=now.isoformat(), minute=minute, score=score, result="pending", home=normalized(g.get("home")), away=normalized(g.get("away")))
+            snapshots[gid] = dict(at=now.isoformat(), minute=minute, stats=stats, score=score, red=red)
         save(state)
         print("DataSports statistics:", int(complete), "momentum:", int("momentum" in stats))
+    for g in live:
+        gid = str(g["id"])
+        record = signals.get(gid)
+        if not record or record["result"] != "pending":
+            continue
+        minute = minutes.get(gid)
+        score = [(g.get(k) or {}).get("current") for k in ("homeScore","awayScore")]
+        if minute is None or not all(type(v) is int for v in score):
+            continue
+        elapsed = minute-record["minute"]
+        if 0 <= elapsed <= 15 and sum(score) > sum(record["score"]):
+            record["result"] = "goal_observed"
+        elif elapsed >= 15:
+            record["result"] = "no_goal_observed" if score == record["score"] else "unknown"
+    for record in signals.values():
+        if record["result"] == "pending" and (now-kickoff(record["at"])).total_seconds() > 3600:
+            record["result"] = "unknown"
+    save(state)
+    print("DataSports POE3 signals:", len(signals), "goals:", sum(v["result"]=="goal_observed" for v in signals.values()))
     print("DataSports budget:", budget["used"], "/ 80")
