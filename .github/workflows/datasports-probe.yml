@@ -1,0 +1,45 @@
+name: DataSportsAPI probe
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/datasports-probe.yml
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe live football and one statistics endpoint
+        env:
+          DATASPORTS_API_KEY: ${{ secrets.DATASPORTS_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request, urllib.error
+          key = os.environ["DATASPORTS_API_KEY"]
+          if not key:
+              raise SystemExit("Missing secret")
+          def get(path):
+              req = urllib.request.Request("https://api.datasportsapi.com/v2/" + path, headers={"Authorization": "Bearer " + key})
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as r:
+                      print(path, "HTTP", r.status)
+                      print("Quota headers:", {k:v for k,v in r.headers.items() if "ratelimit" in k.lower() or "quota" in k.lower()})
+                      return json.load(r)
+              except urllib.error.HTTPError as e:
+                  print(path, "HTTP", e.code)
+                  return None
+          result = get("livescores?sport=football")
+          if result is None:
+              raise SystemExit("Live probe failed")
+          games = result.get("data", [])
+          print("Fixtures:", len(games))
+          print("Leagues:", sorted({str((g.get("league") or {}).get("name")) for g in games}))
+          if games:
+              g = games[0]
+              print("Sample:", json.dumps({k:g.get(k) for k in ("id","status","clock","startTime","home","away","homeScore","awayScore","league")})[:5000])
+              if isinstance(g.get("id"), int):
+                  stats = get("fixtures/" + str(g["id"]) + "/statistics")
+                  if stats is not None:
+                      print("Statistics sample:", json.dumps(stats)[:5000])
+          PY
