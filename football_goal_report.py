@@ -12,3 +12,5 @@ for half in (1, 2):
 
 import football_poe
 print("FOOTBALL_POE_REPORT:", json.dumps(football_poe.report(state)))
+
+print("FOOTBALL_POE_V2_REPORT:", json.dumps(football_poe.report_v2(state)))
