@@ -102,7 +102,7 @@ def recover_goal_minutes(state, live_by_id, now, api_get, cache, checked):
             continue
         expected = sum(result[1]) - sum(record["score_at_alert"])
         existing = record.get("official_goal_minutes", [])
-        if len(existing) >= expected:
+        if len(existing) >= expected and record.get("first_goal_timing"):
             continue
         if eid not in cache:
             if eid in checked or len(checked) >= 8:
@@ -124,6 +124,10 @@ def recover_goal_minutes(state, live_by_id, now, api_get, cache, checked):
         payload = cache[eid]
         if not isinstance(payload, dict) or str(payload.get("event_id")) != eid:
             continue
+        timing = first_goal_timing(record, payload, result[1])
+        if timing and timing != record.get("first_goal_timing"):
+            record["first_goal_timing"] = timing
+            changed = True
         minutes = official_goal_minutes(record, {"events": payload.get("incidents")})
         if minutes:
             merged = list(dict.fromkeys(existing + minutes))
@@ -191,3 +195,41 @@ def edit_pending(state, live_matches, token, chat_id, channel_id=None):
             changed = True
             print("Messaggio Telegram aggiornato:", record.get("event_id"), marker, "finale:", final if final_valid else "non disponibile")
     return changed
+
+
+def first_goal_timing(record, payload, final):
+    raw = str(record.get("minute", "")).strip().rstrip("'")
+    if not raw.isdigit() or str(payload.get("event_id")) != str(record.get("event_id")):
+        return None
+    alert = int(raw)
+    initial = record["score_at_alert"]
+    candidates = []
+    for e in payload.get("incidents") or []:
+        if not isinstance(e, dict) or str(e.get("type","")).lower() not in {"goal","own goal","own_goal","penalty goal"}:
+            continue
+        score = _score(e)
+        if score is None:
+            return None
+        if sum(score)==sum(initial)+1 and all(initial[i]<=score[i]<=final[i] for i in (0,1)):
+            candidates.append((score,str(e.get("minute","")).strip().rstrip("'")))
+    if len(candidates)!=1:
+        return None
+    score, minute = candidates[0]
+    if not minute.isdigit():
+        return None
+    minute = int(minute)
+    if not alert < minute <= (45 if record.get("half")==1 else 90):
+        return None
+    if record.get("half")==2 and alert<46:
+        return None
+    return dict(elapsed=minute-alert,minute=minute,side="Home" if score[0]>initial[0] else "Away")
+
+
+def timing_report(records, half):
+    from statistics import mean, median
+    status = "halftime_outcome" if half==1 else "outcome"
+    goals = "halftime_goals_after_alert" if half==1 else "goals_after_alert"
+    valid = [r for r in records if r.get("half")==half and r.get(status)=="verified" and isinstance(r.get(goals),int)]
+    positive = [r for r in valid if r[goals]>0]
+    times = [r["first_goal_timing"]["elapsed"] for r in positive if isinstance(r.get("first_goal_timing"),dict)]
+    return dict(half=half,verified=len(valid),positive=len(positive),timed=len(times),missing=len(positive)-len(times),mean=round(mean(times),2) if times else None,median=median(times) if times else None,within={str(n):sum(t<=n for t in times) for n in (5,10,15,20)},denominator=len(times))

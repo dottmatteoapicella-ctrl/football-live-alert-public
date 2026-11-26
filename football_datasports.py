@@ -23,21 +23,32 @@ def kickoff(value):
         return None
 
 
+def team_key(value):
+    # Remove only generic club designators; retain youth, reserve and gender labels.
+    return " ".join(t for t in normalized(value).split() if t not in {"fc", "cf", "afc", "fk", "sc"})
+
+
 def associate(primary, secondary):
     pairs = {}
+    counts = dict(invalid=0, names_missing=0, time_mismatch=0, ambiguous=0)
     for g in secondary:
-        home, away = normalized(g.get("home")), normalized(g.get("away"))
+        home, away = team_key(g.get("home")), team_key(g.get("away"))
         start = kickoff(g.get("startTime"))
         if not home or not away or not start or g.get("id") is None:
+            counts["invalid"] += 1
             continue
-        candidates = []
-        for m in primary:
-            t = kickoff(m.get("event_date"))
-            if t and abs((t-start).total_seconds()) <= 900 and normalized(m.get("home_team")) == home and normalized(m.get("away_team")) == away and m.get("id") is not None:
-                candidates.append(str(m["id"]))
+        names = [m for m in primary if m.get("id") is not None
+                 and team_key(m.get("home_team")) == home and team_key(m.get("away_team")) == away]
+        candidates = [str(m["id"]) for m in names if kickoff(m.get("event_date"))
+                      and abs((kickoff(m["event_date"])-start).total_seconds()) <= 900]
         if len(candidates) == 1:
             pairs[str(g["id"])] = candidates[0]
-    return {k:v for k,v in pairs.items() if list(pairs.values()).count(v) == 1}
+        else:
+            counts["ambiguous" if candidates else "time_mismatch" if names else "names_missing"] += 1
+    unique = {k:v for k,v in pairs.items() if list(pairs.values()).count(v) == 1}
+    counts["ambiguous"] += len(pairs) - len(unique)
+    print("DataSports association diagnostics:", counts)
+    return unique
 
 
 def league_id(game):
@@ -148,7 +159,7 @@ def observe(state, now, save):
                                   seen.get(str(g["id"]), ""), g["id"]))
         selected += (other or candidates[1:])[:1]
     # Follow-ups take precedence; extra live calls share the same hard cap.
-    selected = [g for g in candidates if str(g["id"]) in due] + ([g for g in selected if str(g["id"]) not in due] if fresh else [])
+    selected = sorted([g for g in candidates if str(g["id"]) in due], key=lambda g: snapshots[str(g["id"])]["at"]) + ([g for g in selected if str(g["id"]) not in due] if fresh else [])
     for g in selected[:2]:
         if budget["stats"] >= 32 or budget["used"] >= 80 or budget.get("blocked"):
             break
@@ -156,8 +167,6 @@ def observe(state, now, save):
         seen[str(g["id"])] = now.isoformat()
         save(state)
         data = get("fixtures/" + str(g["id"]) + "/statistics")
-        if not isinstance(data, dict):
-            continue
         stats = extract_stats(data)
         complete = {"expectedGoals", "totalShots", "shotsOnGoal"} <= stats.keys()
         league = league_id(g)
