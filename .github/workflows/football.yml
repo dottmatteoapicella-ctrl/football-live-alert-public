@@ -49,6 +49,7 @@ jobs:
       - name: Controlla partite
         if: steps.orario.outputs.attivo == 'true'
         env:
+          DATASPORTS_API_KEY: ${{ secrets.DATASPORTS_API_KEY }}
           BSD_API_KEY: ${{ secrets.BSD_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -57,6 +58,33 @@ jobs:
           test -n "$BSD_API_KEY" && test -n "$TELEGRAM_BOT_TOKEN" && test -n "$TELEGRAM_CHAT_ID"
           if python football_alert.py > /tmp/football-run.log 2>&1; then
             echo "Controllo completato."
+            grep -E '^DataSports (live: [0-9]+ leagues: [0-9]+|statistics: [01] momentum: [01]|budget: [0-9]+ / 80|feed unavailable)
+            grep -E '^Diagnostica POE feed: [0-9]+ con statistiche: [0-9]+ con dati completi: [0-9]+$' /tmp/football-run.log || true
+            grep -E '^(Invio canale Telegram|Invio canale Telegram fallito|Nuovi alert Telegram|Richieste quote|Partite con minuto valido|Eventi da events/live/|Eventi da filtro alternativo status=live|Eventi live aggiunti dal catalogo|Eventi catalogo scartati per stato/minuto|Eventi live esclusi per stato/minuto|Eventi live senza favorita pre-match|Eventi live senza punteggio|Nuove favorite salvate|Quote gia. in cache|Risposte quote senza favorita valida|Richieste quote fallite|Diagnostica catalogo stato [a-z_]+|Diagnostica dettagli live (controllati|recuperati)|Diagnostica feed live (events presente|results presente|minuto assente|minuto non valido)): [0-9]+$' /tmp/football-run.log || true
+          else
+            echo "::error::Controllo fallito; dettagli riservati non pubblicati."
+            exit 1
+          fi
+      - name: Report aggregato gol
+        if: steps.orario.outputs.attivo == 'true'
+        run: python football_goal_report.py
+      - name: Cifra stato
+        id: encrypt
+        if: always() && steps.orario.outputs.attivo == 'true'
+        env:
+          STATE_PASSWORD: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          if [ -s football_alert_state.json ] && [ -n "$STATE_PASSWORD" ]; then
+            python -m json.tool football_alert_state.json >/dev/null
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in football_alert_state.json -out football-state.enc -pass env:STATE_PASSWORD
+            echo "saved=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/cache/save@v4
+        if: always() && steps.encrypt.outputs.saved == 'true'
+        with:
+          path: football-state.enc
+          key: football-encrypted-v1-${{ github.run_id }}-${{ github.run_attempt }}
+ /tmp/football-run.log || true
             grep -E '^Diagnostica POE feed: [0-9]+ con statistiche: [0-9]+ con dati completi: [0-9]+$' /tmp/football-run.log || true
             grep -E '^(Invio canale Telegram|Invio canale Telegram fallito|Nuovi alert Telegram|Richieste quote|Partite con minuto valido|Eventi da events/live/|Eventi da filtro alternativo status=live|Eventi live aggiunti dal catalogo|Eventi catalogo scartati per stato/minuto|Eventi live esclusi per stato/minuto|Eventi live senza favorita pre-match|Eventi live senza punteggio|Nuove favorite salvate|Quote gia. in cache|Risposte quote senza favorita valida|Richieste quote fallite|Diagnostica catalogo stato [a-z_]+|Diagnostica dettagli live (controllati|recuperati)|Diagnostica feed live (events presente|results presente|minuto assente|minuto non valido)): [0-9]+$' /tmp/football-run.log || true
           else
