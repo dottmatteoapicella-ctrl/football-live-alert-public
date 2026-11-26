@@ -40,6 +40,7 @@ def observe(state, matches, now):
     snapshots, signals = p["snapshots"], p["signals"]
     counts = Counter()
     for m in matches:
+        counts["matches_seen"] += 1
         eid = str(m.get("id"))
         mn, sc = minute(m), score(m)
         if mn is None or sc is None or str(m.get("status","")).lower() not in {"live","inprogress","in_progress","inplay","in_play","in-progress"}:
@@ -54,7 +55,7 @@ def observe(state, matches, now):
                     r["result"]="goal_observed"
                 elif delta >= 15:
                     r["result"]="no_goal_observed" if sum(sc)==sum(r["score"]) else "unknown"
-        if not 40 <= mn <= 80:
+        if not 25 <= mn <= 80:
             continue
         for side in ("home","away"):
             key = eid+":"+side
@@ -64,16 +65,19 @@ def observe(state, matches, now):
                 continue
             old = snapshots.get(key)
             snapshots[key] = {"minute":mn,"data":data,"time":now.isoformat()}
-            if not old or not 50 <= mn <= 80 or abs(sc[0]-sc[1])>1:
+            if not old or not 40 <= mn <= 80 or abs(sc[0]-sc[1])>1:
                 continue
             age=(now-datetime.fromisoformat(old["time"])).total_seconds()/60
             if not 0 < age <= 20:
                 continue
             value=rating(old["data"],data,mn-old["minute"],mn)
             if value is None:
+                counts["rating_rejected"] += 1
                 continue
             counts["rated"] += 1
-            if value>=85 and eid not in signals:
+            if value < 75:
+                counts["below_threshold"] += 1
+            if value>=75 and eid not in signals:
                 signals[eid]={"minute":mn,"score":sc,"rating":value,"side":side,"time":now.isoformat(),"result":"pending"}
                 counts["new"] += 1
     for r in signals.values():
@@ -93,7 +97,7 @@ def rating_v2(old, new, rival_old, rival_new, elapsed):
         return None
     x,t,s = [(new[i]-old[i])*10/elapsed for i in range(3)]
     rx,rt,rs = [(rival_new[i]-rival_old[i])*10/elapsed for i in range(3)]
-    if x < .4 or t < 2:
+    if x < .25 or t < 1:
         return None
     dominance = sum(a/(a+b) if a+b else .5 for a,b in ((x,rx),(t,rt),(s,rs)))/3
     return round(30*min(x/.6,1)+25*min(t/3,1)+20*dominance+15*min(s/5,1)+10*new[3]/100,1)
@@ -103,6 +107,7 @@ def observe_v2(state, matches, now):
     snapshots,signals=p["snapshots"],p["signals"]
     counts=Counter()
     for m in matches:
+        counts["matches_seen"] += 1
         if not isinstance(m,dict) or m.get("id") is None:
             continue
         eid=str(m["id"])
@@ -119,7 +124,7 @@ def observe_v2(state, matches, now):
                     r["result"]="goal_observed"
                 elif delta>=15:
                     r["result"]="no_goal_observed" if sum(sc)==sum(r["score"]) else "unknown"
-        if not 40<=mn<=80:
+        if not 25<=mn<=80:
             continue
         data=[side_stats(m,side) for side in ("home","away")]
         if any(d is None for d in data):
@@ -129,7 +134,7 @@ def observe_v2(state, matches, now):
         if old and old["minute"]==mn:
             continue
         snapshots[eid]={"minute":mn,"data":data,"time":now.isoformat()}
-        if not old or not 50<=mn<=80 or abs(sc[0]-sc[1])>1 or eid in signals:
+        if not old or not 40<=mn<=80 or abs(sc[0]-sc[1])>1 or eid in signals:
             continue
         age=(now-datetime.fromisoformat(old["time"])).total_seconds()/60
         if not 0<age<=20:
@@ -140,8 +145,12 @@ def observe_v2(state, matches, now):
             value=rating_v2(old["data"][i],data[i],old["data"][1-i],data[1-i],elapsed)
             if value is not None:
                 counts["rated"]+=1
-                if value>=85:
+                if value < 75:
+                    counts["below_threshold"] += 1
+                if value>=75:
                     candidates.append((value,i))
+            else:
+                counts["rating_rejected"] += 1
         if candidates:
             value,i=max(candidates)
             signals[eid]={"minute":mn,"score":sc,"rating":value,"side":("home","away")[i],"time":now.isoformat(),"result":"pending","window":elapsed,"deltas":[[round((data[j][k]-old["data"][j][k])*10/elapsed,2) for k in range(3)] for j in (0,1)]}
