@@ -10,6 +10,7 @@ import requests
 import api_monitor
 import football_outcomes
 import football_poe
+import football_datasports
 import football_telegram_marker
 api_monitor.install()
 
@@ -163,6 +164,7 @@ def main():
     save_state(state)
 
     now = datetime.now(timezone.utc)
+    football_datasports.observe(state, now, save_state)
     odds_requests = 0
     new_favorites = 0
     alerts_sent = 0
