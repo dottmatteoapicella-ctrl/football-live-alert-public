@@ -385,6 +385,26 @@ def main():
     save_state(state)
     football_f1.settle(state, live_matches)
     football_f1.observe(state, live_matches, now, match_half)
+    save_state(state)
+    for eid, record in state.get('f1', {}).items():
+        if record.get('delivery_attempted') or record.get('result') != 'pending':
+            continue
+        record['delivery_attempted'] = True
+        save_state(state)
+        p,t,x,red = record['stats']
+        home,away = record['teams']
+        a,b = record['score']
+        message = (f"⚽ F1 — GOL FAVORITA SECONDO TEMPO\n{home} {a}-{b} {away}\n"
+                   f"Favorita: {record['teams'][record['side']]} | Quota pre-match: {record['odd']:.2f}\n"
+                   f"Minuto: {record['minute']} | Possesso: {p}% | Tiri in porta: {t} | xG: {x}\n"
+                   "Pronostico sperimentale: gol della favorita entro fine partita.")
+        try:
+            record['telegram_message_id'] = send_telegram(message)
+            record['telegram_text'] = message
+            send_channel(record, message)
+        except (requests.RequestException, RuntimeError, ValueError):
+            print('F1 Telegram delivery failed')
+        save_state(state)
     football_poe.observe(state, live_matches, now)
     save_state(state)
     for match in live_matches:
