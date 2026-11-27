@@ -10,6 +10,7 @@ import requests
 import api_monitor
 import football_outcomes
 import football_poe
+import football_f1
 import football_datasports
 import football_telegram_marker
 api_monitor.install()
@@ -382,6 +383,8 @@ def main():
     import football_coverage
     football_coverage.observe(state, live_matches, now, lambda m: all(football_poe.side_stats(m, side) is not None for side in ('home', 'away')))
     save_state(state)
+    football_f1.settle(state, live_matches)
+    football_f1.observe(state, live_matches, now, match_half)
     football_poe.observe(state, live_matches, now)
     save_state(state)
     for match in live_matches:
@@ -469,6 +472,8 @@ def main():
                 })
                 results = completed.get("results", []) if isinstance(completed, dict) else []
                 if isinstance(results, list):
+                    football_f1.settle(state, results)
+                    save_state(state)
                     if football_outcomes.update_halftime(state, results):
                         save_state(state)
                     if football_outcomes.update(state, results):
