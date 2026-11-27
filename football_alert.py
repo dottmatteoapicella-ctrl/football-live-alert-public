@@ -387,7 +387,7 @@ def main():
     football_f1.observe(state, live_matches, now, match_half)
     save_state(state)
     for eid, record in state.get('f1', {}).items():
-        if record.get('delivery_attempted') or record.get('result') != 'pending':
+        if record.get('delivery_attempted') or record.get('result') != 'pending' or record.get('time') != now.isoformat():
             continue
         record['delivery_attempted'] = True
         save_state(state)
@@ -537,6 +537,23 @@ def main():
         state, live_by_id, now, api_get, incident_cache, checked_ht
     ):
         save_state(state)
+
+    for record in state.get("f1", {}).values():
+        result = record.get("result")
+        if result not in ("success", "failure", "unknown") or not record.get("telegram_text"):
+            continue
+        marker = {"success":"✅ F1 CONFERMATA", "failure":"❌ F1 NON CONFERMATA", "unknown":"⚪ ESITO NON VERIFICABILE"}[result]
+        for field, chat in (("telegram_message_id", CHAT_ID), ("telegram_channel_message_id", CHANNEL_ID)):
+            if not chat or not record.get(field) or record.get(field+"_marked"):
+                continue
+            try:
+                response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText",
+                    data={"chat_id":chat,"message_id":record[field],"text":record["telegram_text"]+"\n\n"+marker},timeout=20)
+                if response.ok and response.json().get("ok"):
+                    record[field+"_marked"]=True
+                    save_state(state)
+            except (requests.RequestException, ValueError):
+                print("F1 Telegram edit failed")
 
     # Modifica soltanto messaggi gia' inviati, senza nuove notifiche.
     if football_telegram_marker.edit_pending(state, live_matches, TELEGRAM_TOKEN, CHAT_ID, CHANNEL_ID):
