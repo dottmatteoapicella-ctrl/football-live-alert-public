@@ -379,6 +379,9 @@ def main():
         except (requests.RequestException, RuntimeError, ValueError):
             print("Invio POE3 fallito")
     print("Diagnostica POE feed:", len(live_matches), "con statistiche:", sum(isinstance(m.get("statistics"), dict) and bool(m["statistics"]) for m in live_matches), "con dati completi:", sum(all(football_poe.side_stats(m, side) is not None for side in ("home", "away")) for m in live_matches))
+    import football_coverage
+    football_coverage.observe(state, live_matches, now, lambda m: all(football_poe.side_stats(m, side) is not None for side in ('home', 'away')))
+    save_state(state)
     football_poe.observe(state, live_matches, now)
     save_state(state)
     for match in live_matches:
