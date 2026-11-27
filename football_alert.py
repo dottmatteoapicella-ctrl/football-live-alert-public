@@ -10,6 +10,7 @@ import requests
 import api_monitor
 import football_outcomes
 import football_poe
+import football_f1
 import football_datasports
 import football_telegram_marker
 api_monitor.install()
@@ -382,6 +383,28 @@ def main():
     import football_coverage
     football_coverage.observe(state, live_matches, now, lambda m: all(football_poe.side_stats(m, side) is not None for side in ('home', 'away')))
     save_state(state)
+    football_f1.settle(state, live_matches)
+    football_f1.observe(state, live_matches, now, match_half)
+    save_state(state)
+    for eid, record in state.get('f1', {}).items():
+        if record.get('delivery_attempted') or record.get('result') != 'pending' or record.get('time') != now.isoformat():
+            continue
+        record['delivery_attempted'] = True
+        save_state(state)
+        p,t,x,red = record['stats']
+        home,away = record['teams']
+        a,b = record['score']
+        message = (f"⚽ F1 — GOL FAVORITA SECONDO TEMPO\n{home} {a}-{b} {away}\n"
+                   f"Favorita: {record['teams'][record['side']]} | Quota pre-match: {record['odd']:.2f}\n"
+                   f"Minuto: {record['minute']} | Possesso: {p}% | Tiri in porta: {t} | xG: {x}\n"
+                   "Pronostico sperimentale: gol della favorita entro fine partita.")
+        try:
+            record['telegram_message_id'] = send_telegram(message)
+            record['telegram_text'] = message
+            send_channel(record, message)
+        except (requests.RequestException, RuntimeError, ValueError):
+            print('F1 Telegram delivery failed')
+        save_state(state)
     football_poe.observe(state, live_matches, now)
     save_state(state)
     for match in live_matches:
@@ -469,6 +492,8 @@ def main():
                 })
                 results = completed.get("results", []) if isinstance(completed, dict) else []
                 if isinstance(results, list):
+                    football_f1.settle(state, results)
+                    save_state(state)
                     if football_outcomes.update_halftime(state, results):
                         save_state(state)
                     if football_outcomes.update(state, results):
@@ -512,6 +537,23 @@ def main():
         state, live_by_id, now, api_get, incident_cache, checked_ht
     ):
         save_state(state)
+
+    for record in state.get("f1", {}).values():
+        result = record.get("result")
+        if result not in ("success", "failure", "unknown") or not record.get("telegram_text"):
+            continue
+        marker = {"success":"✅ F1 CONFERMATA", "failure":"❌ F1 NON CONFERMATA", "unknown":"⚪ ESITO NON VERIFICABILE"}[result]
+        for field, chat in (("telegram_message_id", CHAT_ID), ("telegram_channel_message_id", CHANNEL_ID)):
+            if not chat or not record.get(field) or record.get(field+"_marked"):
+                continue
+            try:
+                response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText",
+                    data={"chat_id":chat,"message_id":record[field],"text":record["telegram_text"]+"\n\n"+marker},timeout=20)
+                if response.ok and response.json().get("ok"):
+                    record[field+"_marked"]=True
+                    save_state(state)
+            except (requests.RequestException, ValueError):
+                print("F1 Telegram edit failed")
 
     # Modifica soltanto messaggi gia' inviati, senza nuove notifiche.
     if football_telegram_marker.edit_pending(state, live_matches, TELEGRAM_TOKEN, CHAT_ID, CHANNEL_ID):
