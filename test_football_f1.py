@@ -9,6 +9,7 @@ class TestF1(unittest.TestCase):
         observe(state,[m],now,lambda m:2)
         observe(state,[m],now,lambda m:2)
         self.assertEqual(len(state["f1"]),1)
+        state["f1"]["1"]["telegram_message_id"]=123
         settle(state,[dict(m,status="finished",away_score=2)])
         self.assertEqual(report(state)["outcomes"],{"failure":1})
     def test_missing(self):
