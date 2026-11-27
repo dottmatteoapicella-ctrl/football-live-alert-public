@@ -50,6 +50,7 @@ def settle(state,matches):
         else: r["result"]="success" if sc[r["side"]]>r["score"][r["side"]] else "failure"
 
 def report(state):
-    c=Counter(r["result"] for r in state.get("f1",{}).values())
+    rows=list(state.get("f1",{}).values())
+    c=Counter(r["result"] for r in rows if r.get("telegram_message_id"))
     n=c["success"]+c["failure"]
-    return dict(cycle=state.get("f1_cycle",{}),outcomes=dict(c),verified=n,success_pct=round(100*c["success"]/n,2) if n else None)
+    return dict(observed=len(rows),delivered=sum(bool(r.get("telegram_message_id")) for r in rows),cycle=state.get("f1_cycle",{}),outcomes=dict(c),verified=n,success_pct=round(100*c["success"]/n,2) if n else None)
