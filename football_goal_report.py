@@ -22,3 +22,6 @@ for half in (1, 2):
 
 import football_coverage
 football_coverage.report(state)
+
+import football_poe4
+print("FOOTBALL_POE4_REPORT:", json.dumps(football_poe4.report(state)))
