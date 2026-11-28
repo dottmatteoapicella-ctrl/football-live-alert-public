@@ -22,18 +22,13 @@ def observe(state,matches,now,half_of):
         stats=m.get("statistics")
         if not isinstance(stats,dict): stats={}
         side=fav[0].lower()
-        vals=[]
-        for aliases in (("possession","ball_possession","ballPossession"),("shots_on_target","shotsOnTarget","shotsOnGoal"),("xg","expected_goals","expectedGoals"),("red_cards","redCards")):
-            raw=next((stats[k] for k in aliases if k in stats),None)
-            v=raw.get(side) if isinstance(raw,dict) else None
-            if isinstance(v,str) and v.endswith("%"): v=v[:-1]
-            vals.append(number(v))
-        if any(v is None for v in vals):
-            counts["missing_stats"]+=1
+        raw=next((stats[k] for k in ("red_cards","redCards") if k in stats),None)
+        red=number(raw.get(side)) if isinstance(raw,dict) else None
+        if red is None:
+            counts["missing_red_cards"]+=1
             continue
-        p,t,x,red=vals
-        if not (60<=p<=100 and t>=4 and x>=.3 and red==0): continue
-        records[eid]=dict(side=i,score=sc,minute=m.get("current_minute"),time=now.isoformat(),odd=odd,stats=vals,result="pending",teams=[m.get("home_team"),m.get("away_team")])
+        if red!=0: continue
+        records[eid]=dict(side=i,score=sc,minute=m.get("current_minute"),time=now.isoformat(),odd=odd,red_cards=red,result="pending",teams=[m.get("home_team"),m.get("away_team")])
         counts["new"]+=1
     state["f1_cycle"]=dict(counts)
 
