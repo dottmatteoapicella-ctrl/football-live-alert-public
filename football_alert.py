@@ -391,12 +391,11 @@ def main():
             continue
         record['delivery_attempted'] = True
         save_state(state)
-        p,t,x,red = record['stats']
         home,away = record['teams']
         a,b = record['score']
         message = (f"⚽ F1 — GOL FAVORITA SECONDO TEMPO\n{home} {a}-{b} {away}\n"
                    f"Favorita: {record['teams'][record['side']]} | Quota pre-match: {record['odd']:.2f}\n"
-                   f"Minuto: {record['minute']} | Possesso: {p}% | Tiri in porta: {t} | xG: {x}\n"
+                   f"Minuto: {record['minute']} | Espulsioni favorita: 0\n"
                    "Pronostico sperimentale: gol della favorita entro fine partita.")
         try:
             record['telegram_message_id'] = send_telegram(message)
